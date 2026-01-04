@@ -18,10 +18,11 @@ NC='\033[0m' # No Color
 BOLD='\033[1m'
 
 # ========================= 全局变量 =========================
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.2.0"
 SYNCTV_REPO="synctv-org/synctv"
 GH_PROXY="${GH_PROXY:-}"
 DEFAULT_PORT=8080
+SYNCTV_PORT="${SYNCTV_PORT:-$DEFAULT_PORT}"  # 支持环境变量覆盖
 
 # 路径变量 (将在检测后设置)
 INSTALL_DIR=""
@@ -380,11 +381,49 @@ install_synctv() {
     
     log_success "SyncTV ${version} 安装成功!"
     
+    # 配置端口 (安装阶段)
+    configure_port_on_install
+    
     # 设置服务
     setup_service
     
     # 创建快捷命令
     setup_shortcut
+    
+    # 显示访问信息
+    echo ""
+    log_success "SyncTV 安装完成!"
+    log_info "访问地址: http://服务器IP:${SYNCTV_PORT}"
+    log_info "默认账号: root / root (请立即修改!)"
+}
+
+# ========================= 安装阶段端口配置 =========================
+configure_port_on_install() {
+    echo ""
+    log_info "当前端口配置: ${SYNCTV_PORT}"
+    
+    # 如果是通过环境变量设置的，直接使用不再询问
+    if [ "${SYNCTV_PORT}" != "${DEFAULT_PORT}" ]; then
+        log_info "使用环境变量指定的端口: ${SYNCTV_PORT}"
+        return
+    fi
+    
+    # 交互模式下询问是否自定义端口
+    if [ -t 0 ]; then
+        if confirm "是否自定义端口? (默认 ${DEFAULT_PORT})" "n"; then
+            local new_port
+            read -r -p "请输入端口 (1-65535): " new_port
+            
+            # 验证端口
+            if [[ "$new_port" =~ ^[0-9]+$ ]] && [ "$new_port" -ge 1 ] && [ "$new_port" -le 65535 ]; then
+                SYNCTV_PORT="$new_port"
+                log_success "端口设置为: ${SYNCTV_PORT}"
+            else
+                log_warn "无效端口，使用默认: ${DEFAULT_PORT}"
+                SYNCTV_PORT="${DEFAULT_PORT}"
+            fi
+        fi
+    fi
 }
 
 # ========================= 服务管理 =========================
@@ -461,7 +500,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${BIN_PATH} server --data-dir ${DATA_DIR}
+ExecStart=${BIN_PATH} server --data-dir ${DATA_DIR} --server-http-port ${SYNCTV_PORT}
 WorkingDirectory=${DATA_DIR}
 Restart=on-failure
 RestartSec=5
@@ -496,7 +535,7 @@ setup_openrc_service() {
 name="synctv"
 description="SyncTV Service"
 command="${BIN_PATH}"
-command_args="server --data-dir ${DATA_DIR}"
+command_args="server --data-dir ${DATA_DIR} --server-http-port ${SYNCTV_PORT}"
 command_background="yes"
 pidfile="/run/\${RC_SVCNAME}.pid"
 directory="${DATA_DIR}"
@@ -520,7 +559,7 @@ setup_daemon_info() {
     cat > "${CONFIG_DIR}/start.sh" << EOF
 #!/bin/bash
 cd "${DATA_DIR}"
-nohup "${BIN_PATH}" server --data-dir "${DATA_DIR}" > "${DATA_DIR}/synctv.log" 2>&1 &
+nohup "${BIN_PATH}" server --data-dir "${DATA_DIR}" --server-http-port ${SYNCTV_PORT} > "${DATA_DIR}/synctv.log" 2>&1 &
 echo \$! > "${DATA_DIR}/synctv.pid"
 echo "SyncTV 已启动, PID: \$(cat ${DATA_DIR}/synctv.pid)"
 EOF
