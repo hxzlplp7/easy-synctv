@@ -18,7 +18,7 @@ NC='\033[0m' # No Color
 BOLD='\033[1m'
 
 # ========================= 全局变量 =========================
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 SYNCTV_REPO="synctv-org/synctv"
 GH_PROXY="${GH_PROXY:-}"
 DEFAULT_PORT=8080
@@ -80,6 +80,33 @@ confirm() {
         [Yy]* ) return 0;;
         * ) return 1;;
     esac
+}
+
+# BSD/Linux 兼容的 sed -i
+sed_inplace() {
+    if [ "$OS" = "freebsd" ] || [ "$OS" = "darwin" ]; then
+        sed -i '' "$@"
+    else
+        sed -i "$@"
+    fi
+}
+
+# 验证版本号格式
+validate_version() {
+    local ver="$1"
+    # 清理版本号 (去除换行、空格等)
+    ver=$(echo "$ver" | tr -d '\r\n\t ')
+    
+    # 检查格式: v0.0.0 或 latest
+    if [ "$ver" = "latest" ]; then
+        echo "$ver"
+        return 0
+    elif [[ "$ver" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "$ver"
+        return 0
+    else
+        return 1
+    fi
 }
 
 # ========================= 环境检测 =========================
@@ -262,6 +289,9 @@ get_latest_version() {
             ;;
     esac
     
+    # 清理版本号
+    version=$(echo "$version" | tr -d '\r\n\t ')
+    
     if [ -z "$version" ]; then
         echo "latest"
     else
@@ -295,6 +325,12 @@ install_synctv() {
     if [ "$version" = "latest" ]; then
         log_info "获取最新版本..."
         version=$(get_latest_version)
+    fi
+    
+    # 验证版本号格式
+    if ! version=$(validate_version "$version"); then
+        log_error "无效的版本号格式: $version"
+        return 1
     fi
     
     log_info "安装 SyncTV ${version}..."
@@ -723,14 +759,14 @@ configure_port() {
     
     # 更新服务配置
     if [ "$SERVICE_TYPE" = "systemd" ] && [ -f "/etc/systemd/system/synctv.service" ]; then
-        sed -i "s|ExecStart=.*|ExecStart=${BIN_PATH} server --data-dir ${DATA_DIR} --server-http-port ${new_port}|" /etc/systemd/system/synctv.service
+        sed_inplace "s|ExecStart=.*|ExecStart=${BIN_PATH} server --data-dir ${DATA_DIR} --server-http-port ${new_port}|" /etc/systemd/system/synctv.service
         systemctl daemon-reload
         log_success "systemd 服务配置已更新"
     fi
     
     # 更新daemon模式启动脚本
     if [ -f "${CONFIG_DIR}/start.sh" ]; then
-        sed -i "s|server --data-dir.*|server --data-dir \"${DATA_DIR}\" --server-http-port ${new_port} > \"${DATA_DIR}/synctv.log\" 2>\&1 \&|" "${CONFIG_DIR}/start.sh"
+        sed_inplace "s|server --data-dir.*|server --data-dir \"${DATA_DIR}\" --server-http-port ${new_port} > \"${DATA_DIR}/synctv.log\" 2>\\&1 \\&|" "${CONFIG_DIR}/start.sh"
         log_success "启动脚本已更新"
     fi
     
