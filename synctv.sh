@@ -500,7 +500,8 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${BIN_PATH} server --data-dir ${DATA_DIR} --server-http-port ${SYNCTV_PORT}
+Environment="SYNCTV_SERVER_PORT=${SYNCTV_PORT}"
+ExecStart=${BIN_PATH} server --data-dir ${DATA_DIR}
 WorkingDirectory=${DATA_DIR}
 Restart=on-failure
 RestartSec=5
@@ -535,10 +536,12 @@ setup_openrc_service() {
 name="synctv"
 description="SyncTV Service"
 command="${BIN_PATH}"
-command_args="server --data-dir ${DATA_DIR} --server-http-port ${SYNCTV_PORT}"
+command_args="server --data-dir ${DATA_DIR}"
 command_background="yes"
 pidfile="/run/\${RC_SVCNAME}.pid"
 directory="${DATA_DIR}"
+
+export SYNCTV_SERVER_PORT="${SYNCTV_PORT}"
 
 depend() {
     need net
@@ -557,11 +560,16 @@ setup_daemon_info() {
     
     # 创建启动脚本
     cat > "${CONFIG_DIR}/start.sh" << EOF
-#!/bin/bash
+#!/bin/sh
 cd "${DATA_DIR}"
-nohup "${BIN_PATH}" server --data-dir "${DATA_DIR}" --server-http-port ${SYNCTV_PORT} > "${DATA_DIR}/synctv.log" 2>&1 &
+
+# 设置端口环境变量
+export SYNCTV_SERVER_PORT="${SYNCTV_PORT}"
+export SYNCTV_SERVER_LISTEN="0.0.0.0"
+
+nohup "${BIN_PATH}" server --data-dir "${DATA_DIR}" > "${DATA_DIR}/synctv.log" 2>&1 &
 echo \$! > "${DATA_DIR}/synctv.pid"
-echo "SyncTV 已启动, PID: \$(cat ${DATA_DIR}/synctv.pid)"
+echo "SyncTV 已启动, PID: \$(cat ${DATA_DIR}/synctv.pid), 端口: ${SYNCTV_PORT}"
 EOF
     chmod +x "${CONFIG_DIR}/start.sh"
     
@@ -837,16 +845,24 @@ configure_port() {
     
     log_info "将使用端口: ${new_port}"
     
-    # 更新服务配置
+    # 更新服务配置 (systemd)
     if [ "$SERVICE_TYPE" = "systemd" ] && [ -f "/etc/systemd/system/synctv.service" ]; then
-        sed_inplace "s|ExecStart=.*|ExecStart=${BIN_PATH} server --data-dir ${DATA_DIR} --server-http-port ${new_port}|" /etc/systemd/system/synctv.service
+        # 更新 Environment 行中的端口
+        sed_inplace "s|SYNCTV_SERVER_PORT=[0-9]*|SYNCTV_SERVER_PORT=${new_port}|" /etc/systemd/system/synctv.service
         systemctl daemon-reload
         log_success "systemd 服务配置已更新"
     fi
     
     # 更新daemon模式启动脚本
     if [ -f "${CONFIG_DIR}/start.sh" ]; then
-        sed_inplace "s|server --data-dir.*|server --data-dir \"${DATA_DIR}\" --server-http-port ${new_port} > \"${DATA_DIR}/synctv.log\" 2>\\&1 \\&|" "${CONFIG_DIR}/start.sh"
+        # 更新 export SYNCTV_SERVER_PORT 行
+        if grep -q 'export SYNCTV_SERVER_PORT=' "${CONFIG_DIR}/start.sh"; then
+            sed_inplace "s|export SYNCTV_SERVER_PORT=.*|export SYNCTV_SERVER_PORT=\"${new_port}\"|" "${CONFIG_DIR}/start.sh"
+        else
+            # 如果没有，在 cd 命令后添加
+            sed_inplace "/^cd /a\\
+export SYNCTV_SERVER_PORT=\"${new_port}\"" "${CONFIG_DIR}/start.sh"
+        fi
         log_success "启动脚本已更新"
     fi
     
