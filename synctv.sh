@@ -253,8 +253,6 @@ get_latest_version() {
     local api_url="https://api.github.com/repos/${SYNCTV_REPO}/releases/latest"
     local version=""
     
-    log_info "获取最新版本..."
-    
     case "$DOWNLOAD_TOOL" in
         curl)
             version=$(curl -fsSL --connect-timeout 10 "$api_url" 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
@@ -265,7 +263,6 @@ get_latest_version() {
     esac
     
     if [ -z "$version" ]; then
-        log_warn "无法获取最新版本，使用默认: latest"
         echo "latest"
     else
         echo "$version"
@@ -296,6 +293,7 @@ install_synctv() {
     
     # 获取实际版本号
     if [ "$version" = "latest" ]; then
+        log_info "获取最新版本..."
         version=$(get_latest_version)
     fi
     
@@ -638,6 +636,7 @@ upgrade_synctv() {
     fi
     
     local latest_version
+    log_info "获取最新版本..."
     latest_version=$(get_latest_version)
     
     log_info "当前版本: ${current_version}"
