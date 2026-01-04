@@ -898,10 +898,26 @@ main() {
         exit 0
     fi
     
+    # 检查是否为交互终端
+    if [ ! -t 0 ]; then
+        log_error "当前不是交互终端，菜单模式不可用"
+        log_info "请使用命令行参数: $0 {install|upgrade|start|stop|restart|status|logs|uninstall|version}"
+        exit 1
+    fi
+    
     # 交互式菜单
     while true; do
         show_menu
         read -r -p "请选择操作 [0-10]: " choice
+        echo ""
+        
+        # 清理输入 (去除空白字符)
+        choice=$(printf '%s' "$choice" | tr -d '[:space:]')
+        
+        # 空输入: 直接刷新菜单
+        if [ -z "$choice" ]; then
+            continue
+        fi
         
         case "$choice" in
             1)
@@ -939,7 +955,7 @@ main() {
                 exit 0
                 ;;
             *)
-                log_error "无效选择"
+                log_error "无效选择，请输入 0-10"
                 ;;
         esac
         
