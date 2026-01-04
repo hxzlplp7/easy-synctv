@@ -382,6 +382,9 @@ install_synctv() {
     
     # 设置服务
     setup_service
+    
+    # 创建快捷命令
+    setup_shortcut
 }
 
 # ========================= 服务管理 =========================
@@ -397,6 +400,44 @@ setup_service() {
             setup_daemon_info
             ;;
     esac
+}
+
+# ========================= 快捷命令 =========================
+setup_shortcut() {
+    local shortcut_name="stv"
+    local shortcut_path=""
+    
+    if [ "$IS_ROOT" = true ]; then
+        # root 用户: 直接在 /usr/bin 创建软链接
+        shortcut_path="/usr/bin/${shortcut_name}"
+        if [ ! -e "$shortcut_path" ]; then
+            ln -sf "$BIN_PATH" "$shortcut_path"
+            log_success "快捷命令已创建: ${shortcut_name}"
+        fi
+    else
+        # 普通用户: 创建 ~/bin 目录并添加软链接
+        local user_bin="$HOME/bin"
+        mkdir -p "$user_bin"
+        shortcut_path="${user_bin}/${shortcut_name}"
+        
+        if [ ! -e "$shortcut_path" ]; then
+            ln -sf "$BIN_PATH" "$shortcut_path"
+            log_success "快捷命令已创建: ${shortcut_path}"
+        fi
+        
+        # 检查 PATH 是否包含 ~/bin
+        if [[ ":$PATH:" != *":$user_bin:"* ]]; then
+            log_warn "~/bin 未在 PATH 中，请执行:"
+            echo "  echo 'export PATH=\"\$HOME/bin:\$PATH\"' >> ~/.profile"
+            echo "  source ~/.profile"
+        fi
+    fi
+    
+    echo ""
+    log_info "快捷命令用法:"
+    echo "  ${shortcut_name} server              # 启动服务器"
+    echo "  ${shortcut_name} version             # 查看版本"
+    echo "  ${shortcut_name} server --help       # 查看帮助"
 }
 
 setup_systemd_service() {
