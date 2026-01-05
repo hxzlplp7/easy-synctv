@@ -1045,35 +1045,38 @@ show_menu() {
     local current_version
     current_version=$(get_current_version)
     
-    echo ""
-    echo -e "${CYAN}========================================${NC}"
-    echo -e "${CYAN}       SyncTV 管理面板${NC}"
-    echo -e "${CYAN}========================================${NC}"
-    echo ""
-    echo -e "  当前版本: ${GREEN}${current_version}${NC}"
-    echo -e "  安装目录: ${BIN_PATH}"
-    echo -e "  数据目录: ${DATA_DIR}"
-    echo -e "  服务模式: ${SERVICE_TYPE}"
-    echo ""
-    echo -e "${YELLOW}  1.${NC} 安装/重装 SyncTV"
-    echo -e "${YELLOW}  2.${NC} 升级 SyncTV"
-    echo -e "${YELLOW}  3.${NC} 启动服务"
-    echo -e "${YELLOW}  4.${NC} 停止服务"
-    echo -e "${YELLOW}  5.${NC} 重启服务"
-    echo -e "${YELLOW}  6.${NC} 查看状态"
-    echo -e "${YELLOW}  7.${NC} 查看日志"
-    echo -e "${YELLOW}  8.${NC} 设置开机自启"
-    echo -e "${YELLOW}  9.${NC} 配置端口 (NAT VPS)"
-    echo -e "${YELLOW} 10.${NC} 卸载 SyncTV"
-    echo ""
-    echo -e "${CYAN}---------- 保活管理 ----------${NC}"
-    echo -e "${YELLOW} 11.${NC} 启用保活 (watchdog)"
-    echo -e "${YELLOW} 12.${NC} 关闭保活 (watchdog)"
-    echo -e "${YELLOW} 13.${NC} 保活状态"
-    echo -e "${YELLOW}  0.${NC} 退出"
-    echo ""
-    echo -e "${CYAN}========================================${NC}"
-    echo ""
+    # 输出到 /dev/tty 确保在 bash <(curl ...) 模式下也能显示
+    {
+        echo ""
+        echo -e "${CYAN}========================================${NC}"
+        echo -e "${CYAN}       SyncTV 管理面板${NC}"
+        echo -e "${CYAN}========================================${NC}"
+        echo ""
+        echo -e "  当前版本: ${GREEN}${current_version}${NC}"
+        echo -e "  安装目录: ${BIN_PATH}"
+        echo -e "  数据目录: ${DATA_DIR}"
+        echo -e "  服务模式: ${SERVICE_TYPE}"
+        echo ""
+        echo -e "${YELLOW}  1.${NC} 安装/重装 SyncTV"
+        echo -e "${YELLOW}  2.${NC} 升级 SyncTV"
+        echo -e "${YELLOW}  3.${NC} 启动服务"
+        echo -e "${YELLOW}  4.${NC} 停止服务"
+        echo -e "${YELLOW}  5.${NC} 重启服务"
+        echo -e "${YELLOW}  6.${NC} 查看状态"
+        echo -e "${YELLOW}  7.${NC} 查看日志"
+        echo -e "${YELLOW}  8.${NC} 设置开机自启"
+        echo -e "${YELLOW}  9.${NC} 配置端口 (NAT VPS)"
+        echo -e "${YELLOW} 10.${NC} 卸载 SyncTV"
+        echo ""
+        echo -e "${CYAN}---------- 保活管理 ----------${NC}"
+        echo -e "${YELLOW} 11.${NC} 启用保活 (watchdog)"
+        echo -e "${YELLOW} 12.${NC} 关闭保活 (watchdog)"
+        echo -e "${YELLOW} 13.${NC} 保活状态"
+        echo -e "${YELLOW}  0.${NC} 退出"
+        echo ""
+        echo -e "${CYAN}========================================${NC}"
+        echo ""
+    } > /dev/tty
 }
 
 # ========================= 主程序 =========================
@@ -1138,8 +1141,8 @@ main() {
         exit 0
     fi
     
-    # 检查是否为交互终端
-    if [ ! -t 0 ]; then
+    # 检查是否为交互终端 (检测 /dev/tty 是否可用)
+    if [ ! -e /dev/tty ]; then
         log_error "当前不是交互终端，菜单模式不可用"
         log_info "请使用命令行参数: $0 {install|upgrade|start|stop|restart|status|logs|uninstall|version}"
         exit 1
@@ -1148,7 +1151,7 @@ main() {
     # 交互式菜单
     while true; do
         show_menu
-        read -r -p "请选择操作 [0-13]: " choice
+        read -r -p "请选择操作 [0-13]: " choice < /dev/tty
         echo ""
         
         # 清理输入 (去除空白字符)
@@ -1209,7 +1212,7 @@ main() {
         esac
         
         echo ""
-        read -r -p "按 Enter 继续..."
+        read -r -p "按 Enter 继续..." < /dev/tty
     done
 }
 
