@@ -1079,6 +1079,14 @@ show_menu() {
     } > /dev/tty
 }
 
+# ========================= TTY 修复 =========================
+ensure_tty_io() {
+    # 如果 stdout 不是终端，但 /dev/tty 可用，则把输出都切到 tty
+    if [ ! -t 1 ] && [ -w /dev/tty ]; then
+        exec 1>/dev/tty 2>/dev/tty
+    fi
+}
+
 # ========================= 主程序 =========================
 main() {
     print_banner
@@ -1141,12 +1149,18 @@ main() {
         exit 0
     fi
     
-    # 检查是否为交互终端 (检测 /dev/tty 是否可用)
-    if [ ! -e /dev/tty ]; then
+    # 检查是否为交互终端 (stdin 是终端或 /dev/tty 可读)
+    if [ ! -t 0 ] && [ ! -r /dev/tty ]; then
         log_error "当前不是交互终端，菜单模式不可用"
         log_info "请使用命令行参数: $0 {install|upgrade|start|stop|restart|status|logs|uninstall|version}"
         exit 1
     fi
+    
+    # 确保输出能显示在终端 (修复 bash <(curl ...) 模式)
+    ensure_tty_io
+    
+    # 重新打印 banner (确保在 tty 可见)
+    print_banner
     
     # 交互式菜单
     while true; do
