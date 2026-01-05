@@ -338,7 +338,7 @@ install_synctv() {
     
     # 创建临时目录
     local tmp_dir
-    tmp_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'synctv-install')
+    tmp_dir=$(mktemp -d 2>/dev/null || mktemp -d -t synctv-install.XXXXXXXXXX 2>/dev/null || mktemp -d -p "${TMPDIR:-/tmp}" synctv-install.XXXXXXXXXX)
     trap 'rm -rf "$tmp_dir"' EXIT
     
     # 构建下载URL
