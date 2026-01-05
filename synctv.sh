@@ -594,6 +594,9 @@ fi
 EOF
     chmod +x "${CONFIG_DIR}/stop.sh"
     
+    # 写入端口文件 (供 watchdog 读取)
+    echo "${SYNCTV_PORT}" > "${CONFIG_DIR}/port"
+    
     log_success "启动脚本已创建"
     log_info "启动: ${CONFIG_DIR}/start.sh"
     log_info "停止: ${CONFIG_DIR}/stop.sh"
@@ -866,7 +869,165 @@ export SYNCTV_SERVER_PORT=\"${new_port}\"" "${CONFIG_DIR}/start.sh"
         log_success "启动脚本已更新"
     fi
     
+    # 同步写入端口文件 (供 watchdog 读取)
+    echo "${new_port}" > "${CONFIG_DIR}/port"
+    
     log_info "重启服务以应用更改: 重启后访问 http://服务器IP:${new_port}"
+}
+
+# ========================= 保活 (Keepalive/Watchdog) =========================
+enable_keepalive() {
+    local wd="${CONFIG_DIR}/watchdog.sh"
+    local start_script="${CONFIG_DIR}/start.sh"
+    
+    # 检查启动脚本是否存在
+    if [ ! -f "$start_script" ]; then
+        log_error "启动脚本不存在: ${start_script}"
+        log_info "请先安装 SyncTV 后再启用保活"
+        return 1
+    fi
+    
+    # 写入当前端口到文件
+    local current_port="${SYNCTV_PORT:-${DEFAULT_PORT}}"
+    echo "${current_port}" > "${CONFIG_DIR}/port"
+    
+    log_info "创建 watchdog 脚本..."
+    
+    # 生成 watchdog.sh (使用 POSIX sh 兼容语法)
+    cat > "$wd" <<'WATCHDOG_EOF'
+#!/bin/sh
+# SyncTV Watchdog - 自动检测并重启服务
+# 由 synctv.sh 自动生成
+
+BASE="$HOME/synctv"
+BIN="$BASE/bin/synctv"
+START="$BASE/start.sh"
+PORT_FILE="$BASE/port"
+LOG="$BASE/data/watchdog.log"
+
+# 读取端口
+PORT="$(cat "$PORT_FILE" 2>/dev/null | tr -d '[:space:]')"
+[ -z "$PORT" ] && PORT="8080"
+
+log_msg() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG" 2>/dev/null
+}
+
+# 检测进程是否存在
+if pgrep -f "$BIN[[:space:]]server" >/dev/null 2>&1; then
+    # 进程存在，可选二次确认端口监听 (FreeBSD sockstat)
+    if command -v sockstat >/dev/null 2>&1; then
+        if sockstat -4 -l 2>/dev/null | awk '{print $6}' | grep -q ":$PORT$"; then
+            exit 0
+        fi
+    else
+        exit 0
+    fi
+fi
+
+# 进程不在或端口未监听 → 拉起
+log_msg "检测到 SyncTV 未运行，正在重启..."
+sh "$START" >/dev/null 2>&1
+log_msg "SyncTV 已重启"
+exit 0
+WATCHDOG_EOF
+    
+    chmod +x "$wd"
+    log_success "watchdog 脚本已创建: ${wd}"
+    
+    # 添加 crontab (避免重复)
+    log_info "配置 crontab 定时任务..."
+    
+    # 移除旧的 watchdog 条目，添加新的
+    local cron_reboot="@reboot ${start_script}"
+    local cron_watchdog="*/1 * * * * ${wd}"
+    
+    # 获取当前 crontab，过滤掉旧条目
+    local current_cron
+    current_cron=$(crontab -l 2>/dev/null | grep -v "${CONFIG_DIR}/watchdog.sh" | grep -v "${CONFIG_DIR}/start.sh" || true)
+    
+    # 写入新的 crontab
+    {
+        echo "$current_cron"
+        echo "$cron_reboot"
+        echo "$cron_watchdog"
+    } | grep -v '^$' | crontab -
+    
+    log_success "保活已启用!"
+    echo ""
+    log_info "crontab 已添加:"
+    echo "  @reboot ${start_script}"
+    echo "  */1 * * * * ${wd}"
+    echo ""
+    log_info "watchdog 日志: ${DATA_DIR}/watchdog.log"
+    log_info "进程被杀后将在 1 分钟内自动重启"
+}
+
+disable_keepalive() {
+    local wd="${CONFIG_DIR}/watchdog.sh"
+    local start_script="${CONFIG_DIR}/start.sh"
+    
+    log_info "关闭保活..."
+    
+    # 从 crontab 中移除相关条目
+    local current_cron
+    current_cron=$(crontab -l 2>/dev/null | grep -v "${CONFIG_DIR}/watchdog.sh" | grep -v "${CONFIG_DIR}/start.sh" || true)
+    
+    if [ -n "$current_cron" ]; then
+        echo "$current_cron" | crontab -
+    else
+        crontab -r 2>/dev/null || true
+    fi
+    
+    # 删除 watchdog 脚本
+    if [ -f "$wd" ]; then
+        rm -f "$wd"
+        log_info "watchdog 脚本已删除"
+    fi
+    
+    log_success "保活已关闭"
+}
+
+show_keepalive_status() {
+    local wd="${CONFIG_DIR}/watchdog.sh"
+    
+    echo ""
+    echo -e "${CYAN}保活状态${NC}"
+    echo "========================================"
+    
+    # 检查 watchdog 脚本
+    if [ -f "$wd" ]; then
+        echo -e "watchdog 脚本: ${GREEN}已创建${NC}"
+    else
+        echo -e "watchdog 脚本: ${RED}未创建${NC}"
+    fi
+    
+    # 检查 crontab
+    local cron_exists=""
+    if crontab -l 2>/dev/null | grep -q "watchdog.sh"; then
+        cron_exists="yes"
+        echo -e "crontab 定时: ${GREEN}已启用${NC}"
+    else
+        echo -e "crontab 定时: ${RED}未启用${NC}"
+    fi
+    
+    # 检查端口文件
+    if [ -f "${CONFIG_DIR}/port" ]; then
+        local port
+        port=$(cat "${CONFIG_DIR}/port" 2>/dev/null | tr -d '[:space:]')
+        echo -e "监控端口: ${GREEN}${port}${NC}"
+    else
+        echo -e "监控端口: ${YELLOW}未设置${NC}"
+    fi
+    
+    echo "========================================"
+    
+    if [ -f "$wd" ] && [ -n "$cron_exists" ]; then
+        echo -e "保活状态: ${GREEN}运行中${NC}"
+    else
+        echo -e "保活状态: ${YELLOW}未启用${NC}"
+    fi
+    echo ""
 }
 
 # ========================= 主菜单 =========================
@@ -894,6 +1055,11 @@ show_menu() {
     echo -e "${YELLOW}  8.${NC} 设置开机自启"
     echo -e "${YELLOW}  9.${NC} 配置端口 (NAT VPS)"
     echo -e "${YELLOW} 10.${NC} 卸载 SyncTV"
+    echo ""
+    echo -e "${CYAN}---------- 保活管理 ----------${NC}"
+    echo -e "${YELLOW} 11.${NC} 启用保活 (watchdog)"
+    echo -e "${YELLOW} 12.${NC} 关闭保活 (watchdog)"
+    echo -e "${YELLOW} 13.${NC} 保活状态"
     echo -e "${YELLOW}  0.${NC} 退出"
     echo ""
     echo -e "${CYAN}========================================${NC}"
@@ -945,8 +1111,17 @@ main() {
                 echo "SyncTV: $(get_current_version)"
                 echo "Script: ${SCRIPT_VERSION}"
                 ;;
+            keepalive-on)
+                enable_keepalive
+                ;;
+            keepalive-off)
+                disable_keepalive
+                ;;
+            keepalive-status)
+                show_keepalive_status
+                ;;
             *)
-                echo "用法: $0 {install|upgrade|start|stop|restart|status|logs|uninstall|version}"
+                echo "用法: $0 {install|upgrade|start|stop|restart|status|logs|uninstall|version|keepalive-on|keepalive-off|keepalive-status}"
                 exit 1
                 ;;
         esac
@@ -963,7 +1138,7 @@ main() {
     # 交互式菜单
     while true; do
         show_menu
-        read -r -p "请选择操作 [0-10]: " choice
+        read -r -p "请选择操作 [0-13]: " choice
         echo ""
         
         # 清理输入 (去除空白字符)
@@ -1005,12 +1180,21 @@ main() {
             10)
                 uninstall_synctv
                 ;;
+            11)
+                enable_keepalive
+                ;;
+            12)
+                disable_keepalive
+                ;;
+            13)
+                show_keepalive_status
+                ;;
             0)
                 log_info "再见!"
                 exit 0
                 ;;
             *)
-                log_error "无效选择，请输入 0-10"
+                log_error "无效选择，请输入 0-13"
                 ;;
         esac
         
