@@ -887,9 +887,19 @@ enable_keepalive() {
         return 1
     fi
     
-    # 写入当前端口到文件
-    local current_port="${SYNCTV_PORT:-${DEFAULT_PORT}}"
+    # 从 start.sh 读取实际配置的端口
+    local current_port
+    current_port=$(grep 'SYNCTV_SERVER_PORT=' "$start_script" 2>/dev/null | head -1 | sed 's/.*SYNCTV_SERVER_PORT=["'\'']*\([0-9]*\).*/\1/')
+    
+    # 如果读取失败，使用默认端口
+    if [ -z "$current_port" ] || ! [[ "$current_port" =~ ^[0-9]+$ ]]; then
+        current_port="${DEFAULT_PORT}"
+        log_warn "无法从 start.sh 读取端口，使用默认: ${current_port}"
+    fi
+    
+    # 写入端口文件
     echo "${current_port}" > "${CONFIG_DIR}/port"
+    log_info "监控端口: ${current_port}"
     
     log_info "创建 watchdog 脚本..."
     
