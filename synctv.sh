@@ -279,16 +279,31 @@ download_file() {
 
 get_latest_version() {
     local api_url="https://api.github.com/repos/${SYNCTV_REPO}/releases/latest"
+    # 如果设置了 GH_PROXY，则通过代理访问 GitHub API
+    local proxy_api_url="${GH_PROXY}${api_url}"
     local version=""
     
-    case "$DOWNLOAD_TOOL" in
-        curl)
-            version=$(curl -fsSL --connect-timeout 10 "$api_url" 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
-            ;;
-        wget)
-            version=$(wget -qO- --timeout=10 "$api_url" 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
-            ;;
-    esac
+    _fetch_version() {
+        local url="$1"
+        case "$DOWNLOAD_TOOL" in
+            curl)
+                curl -fsSL --connect-timeout 10 "$url" 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4
+                ;;
+            wget)
+                wget -qO- --timeout=10 "$url" 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4
+                ;;
+        esac
+    }
+    
+    # 优先尝试代理 URL（若有），否则直连
+    if [ -n "$GH_PROXY" ]; then
+        version=$(_fetch_version "$proxy_api_url")
+    fi
+    
+    # 代理失败或无代理时，回退直连
+    if [ -z "$version" ]; then
+        version=$(_fetch_version "$api_url")
+    fi
     
     # 清理版本号
     version=$(echo "$version" | tr -d '\r\n\t ')

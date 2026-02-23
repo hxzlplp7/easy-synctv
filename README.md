@@ -27,12 +27,27 @@
 bash <(curl -fsSL https://raw.githubusercontent.com/hxzlplp7/easy-synctv/main/synctv.sh)
 ```
 
-**使用代理加速 (国内用户):**
+### 🇨🇳 国内 VPS 部署
+
+国内 VPS 无法直接访问 GitHub，需要让 **curl 拉脚本** 和 **脚本内下载** 都走代理：
+
 ```bash
-GH_PROXY="https://ghfast.top/" bash <(curl -fsSL https://raw.githubusercontent.com/hxzlplp7/easy-synctv/main/synctv.sh)
+# 方式一：一键命令（推荐）
+GH_PROXY="https://ghfast.top/" bash <(curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/hxzlplp7/easy-synctv/main/synctv.sh)
 ```
 
-### 本地运行
+```bash
+# 方式二：先下载脚本再运行
+curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/hxzlplp7/easy-synctv/main/synctv.sh -o synctv.sh
+chmod +x synctv.sh
+GH_PROXY="https://ghfast.top/" ./synctv.sh
+```
+
+> 💡 **说明**: `GH_PROXY` 变量让脚本内所有 GitHub 下载（SyncTV 二进制 + API 查询）都走代理；  
+> curl 命令本身也需要用代理 URL 来拉取脚本，国内直接访问 `raw.githubusercontent.com` 会超时。  
+> 你可以将 `https://ghfast.top/` 替换为其他可用的 GitHub 代理（如 `https://mirror.ghproxy.com/`）。
+
+### 本地运行（境外 VPS）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hxzlplp7/easy-synctv/main/synctv.sh -o synctv.sh
